@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	// "io/ioutil"
 	"os"
 	"sort"
 	"strconv"
@@ -19,6 +18,7 @@ var (
 	emptyArrivalStationErr      = errors.New("empty arrival station")
 	badArrivalStationInputErr   = errors.New("bad arrival station input")
 	badDepartureStationInputErr = errors.New("bad departure station input")
+	castingProblemErr           = errors.New("problem with casting")
 )
 
 type Trains []Train
@@ -47,14 +47,12 @@ func main() {
 	arrivalStation, _ = bufio.NewReader(os.Stdin).ReadString('\n')
 	arrivalStation = strings.TrimSpace(arrivalStation)
 
-	fmt.Print("Введите критерий, по которому нужно отсортировать поезда в результате. Валидные значения: price, arrival-time, departure-time: ")
+	fmt.Print("Введите критерий, по которому нужно отсортировать поезда в результате. \nВалидные значения: price, arrival-time, departure-time: ")
 	criteria, _ = bufio.NewReader(os.Stdin).ReadString('\n')
 	criteria = strings.TrimSpace(criteria)
 
-	//result, err добавить ошибку
+	//result,
 	result, err := FindTrains(departureStation, arrivalStation, criteria)
-
-	//	... обробка помилки
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -72,7 +70,7 @@ func FindTrains(departureStation, arrivalStation, criteria string) (Trains, erro
 		choosedTrains        Trains
 		unmarshaledJsonDatas Trains
 	)
-	maximumNumberOfTrains := 3
+	const maximumNumberOfTrains = 3
 
 	if departureStation == "" {
 		return nil, emptyDepartureStationErr
@@ -82,6 +80,7 @@ func FindTrains(departureStation, arrivalStation, criteria string) (Trains, erro
 	if err != nil {
 		return nil, badDepartureStationInputErr
 	}
+
 	if arrivalStation == "" {
 		return nil, emptyArrivalStationErr
 	}
@@ -91,9 +90,12 @@ func FindTrains(departureStation, arrivalStation, criteria string) (Trains, erro
 		return nil, badArrivalStationInputErr
 	}
 
-	contentOfDataInByte, _ := os.ReadFile("data.json")
-	err = json.Unmarshal(contentOfDataInByte, &unmarshaledJsonDatas)
+	contentOfDataInByte, err := os.ReadFile("data.json")
 	if err != nil {
+		return nil, err
+	}
+
+	if err := json.Unmarshal(contentOfDataInByte, &unmarshaledJsonDatas); err != nil {
 		return nil, err
 	}
 
@@ -105,7 +107,7 @@ func FindTrains(departureStation, arrivalStation, criteria string) (Trains, erro
 
 	switch criteria {
 	case "price":
-		sort.Slice(choosedTrains, func(i, j int) bool {
+		sort.SliceStable(choosedTrains, func(i, j int) bool {
 			return choosedTrains[j].Price > choosedTrains[i].Price
 		})
 	case "arrival-time":
@@ -127,40 +129,66 @@ func FindTrains(departureStation, arrivalStation, criteria string) (Trains, erro
 	if len(choosedTrains) == 0 {
 		return nil, nil
 	}
+
 	return choosedTrains, nil
 }
 
 func (t *Train) UnmarshalJSON(data []byte) error {
+	const timeStandart = "15:04:00"
 	var jsonTypeToTaskType map[string]interface{}
-	err := json.Unmarshal(data, &jsonTypeToTaskType)
 
-	if err != nil {
+	if err := json.Unmarshal(data, &jsonTypeToTaskType); err != nil {
 		return err
 	}
 
-	for line, v := range jsonTypeToTaskType {
-		switch line {
+	for lineOfStruct, v := range jsonTypeToTaskType {
+		switch lineOfStruct {
 		case "trainId":
-			t.TrainID = int(v.(float64))
+			trainId, ok := v.(float64)
+			if !ok {
+				return castingProblemErr
+			}
+			t.TrainID = int(trainId)
 		case "departureStationId":
-			t.DepartureStationID = int(v.(float64))
+			departureStationID, ok := v.(float64)
+			if !ok {
+				return castingProblemErr
+			}
+			t.DepartureStationID = int(departureStationID)
 		case "arrivalStationId":
-			t.ArrivalStationID = int(v.(float64))
+			arrivalStationId, ok := v.(float64)
+			if !ok {
+				return castingProblemErr
+			}
+			t.ArrivalStationID = int(arrivalStationId)
 		case "price":
-			t.Price = float32(v.(float64))
+			price, ok := v.(float64)
+			if !ok {
+				return castingProblemErr
+			}
+			t.Price = float32(price)
 		case "arrivalTime":
-			time, err := time.Parse("15:04:00", v.(string))
+			arrivalTime, ok := v.(string)
+			if !ok {
+				return castingProblemErr
+			}
+			time, err := time.Parse(timeStandart, arrivalTime)
 			if err != nil {
 				return err
 			}
 			t.ArrivalTime = time
 		case "departureTime":
-			time, err := time.Parse("15:04:00", v.(string))
+			departureTime, ok := v.(string)
+			if !ok {
+				return castingProblemErr
+			}
+			time, err := time.Parse(timeStandart, departureTime)
 			if err != nil {
 				return err
 			}
 			t.DepartureTime = time
 		}
 	}
+
 	return nil
 }
